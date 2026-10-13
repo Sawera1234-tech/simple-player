@@ -1,3 +1,4 @@
+
 name: Build APK
 
 on:
@@ -8,18 +9,64 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
+
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
+
+      - name: Generate Android project
+        run: |
+          flutter create --platforms=android --org com.example --project-name simple_player .
+          flutter pub get
+          dart tools/setup.dart
+
+      - name: Fix Java and Kotlin targets
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          candidates = [
+              Path("android/app/build.gradle"),
+              Path("android/app/build.gradle.kts"),
+          ]
+
+          gradle = next((p for p in candidates if p.exists()), None)
+          if gradle is None:
+              raise SystemExit("Android app Gradle file nahi mili.")
+
+          s = gradle.read_text()
+
+          s = re.sub(r'JavaVersion\.VERSION_11\b',
+                     'JavaVersion.VERSION_17', s)
+
+          s = re.sub(
+              r'(jvmTarget\s*=\s*)(["\'])11\2',
+              r'\g<1>\g<2>17\g<2>', s
+          )
+
+          gradle.write_text(s)
+          print(f"Updated JVM targets in {gradle}")
+
+          if "VERSION_11" in s or re.search(
+              r'jvmTarget\s*=\s*["\']11["\']', s
+          ):
+              raise SystemExit("Kuch JVM target settings abhi bhi 11 par hain.")
+          PY
+
       - name: Build APK
-        run: bash setup.sh
+        run: flutter build apk --release
+
       - uses: actions/upload-artifact@v4
         with:
           name: simple-player-apk
