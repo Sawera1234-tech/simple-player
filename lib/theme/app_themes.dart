@@ -32,7 +32,7 @@ class AppThemeData {
         elevation: 0,
         scrolledUnderElevation: 0,
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: (brightness == Brightness.dark ? Colors.black : Colors.white)
             .withOpacity(0.28),
         elevation: 0,
