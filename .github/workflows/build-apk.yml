@@ -29,55 +29,20 @@ jobs:
           flutter pub get
           dart tools/setup.dart
 
-      - name: Fix Java and Kotlin targets
+      - name: Configure Kotlin JVM validation
         shell: bash
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
+          if [ ! -f android/gradle.properties ]; then
+            touch android/gradle.properties
+          fi
 
-          roots = [
-              Path("android"),
-              Path.home() / ".pub-cache" / "hosted" / "pub.dev",
-          ]
+          if grep -q '^kotlin\.jvm\.target\.validation\.mode=' android/gradle.properties; then
+            sed -i 's/^kotlin\.jvm\.target\.validation\.mode=.*/kotlin.jvm.target.validation.mode=warning/' android/gradle.properties
+          else
+            echo 'kotlin.jvm.target.validation.mode=warning' >> android/gradle.properties
+          fi
 
-          changed = []
-
-          for root in roots:
-              if not root.exists():
-                  continue
-
-              for file in root.rglob("*"):
-                  if not file.is_file():
-                      continue
-
-                  if file.name not in ("build.gradle", "build.gradle.kts"):
-                      continue
-
-                  try:
-                      original = file.read_text()
-                  except (OSError, UnicodeError):
-                      continue
-
-                  updated = original.replace(
-                      "JavaVersion.VERSION_11",
-                      "JavaVersion.VERSION_17"
-                  )
-
-                  updated = re.sub(
-                      r"""(jvmTarget\s*=\s*['"])11(['"])""",
-                      r"\g<1>17\g<2>",
-                      updated
-                  )
-
-                  if updated != original:
-                      file.write_text(updated)
-                      changed.append(str(file))
-
-          print("Updated Gradle files:", len(changed))
-          for file in changed:
-              print(file)
-          PY
+          cat android/gradle.properties
 
       - name: Build APK
         run: flutter build apk --release
