@@ -36,32 +36,47 @@ jobs:
           from pathlib import Path
           import re
 
-          candidates = [
-              Path("android/app/build.gradle"),
-              Path("android/app/build.gradle.kts"),
+          roots = [
+              Path("android"),
+              Path.home() / ".pub-cache" / "hosted" / "pub.dev",
           ]
 
-          gradle = next((p for p in candidates if p.exists()), None)
-          if gradle is None:
-              raise SystemExit("Android app Gradle file nahi mili.")
+          changed = []
 
-          s = gradle.read_text()
+          for root in roots:
+              if not root.exists():
+                  continue
 
-          s = re.sub(r'JavaVersion\.VERSION_11\b',
-                     'JavaVersion.VERSION_17', s)
+              for file in root.rglob("*"):
+                  if not file.is_file():
+                      continue
 
-          s = re.sub(
-              r'(jvmTarget\s*=\s*)(["\'])11\2',
-              r'\g<1>\g<2>17\g<2>', s
-          )
+                  if file.name not in ("build.gradle", "build.gradle.kts"):
+                      continue
 
-          gradle.write_text(s)
-          print(f"Updated JVM targets in {gradle}")
+                  try:
+                      original = file.read_text()
+                  except (OSError, UnicodeError):
+                      continue
 
-          if "VERSION_11" in s or re.search(
-              r'jvmTarget\s*=\s*["\']11["\']', s
-          ):
-              raise SystemExit("Kuch JVM target settings abhi bhi 11 par hain.")
+                  updated = original.replace(
+                      "JavaVersion.VERSION_11",
+                      "JavaVersion.VERSION_17"
+                  )
+
+                  updated = re.sub(
+                      r"""(jvmTarget\s*=\s*['"])11(['"])""",
+                      r"\g<1>17\g<2>",
+                      updated
+                  )
+
+                  if updated != original:
+                      file.write_text(updated)
+                      changed.append(str(file))
+
+          print("Updated Gradle files:", len(changed))
+          for file in changed:
+              print(file)
           PY
 
       - name: Build APK
@@ -71,3 +86,4 @@ jobs:
         with:
           name: simple-player-apk
           path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
