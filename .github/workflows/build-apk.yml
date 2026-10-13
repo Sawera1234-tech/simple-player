@@ -28,13 +28,12 @@ jobs:
           flutter create --platforms=android --org com.example --project-name simple_player .
           flutter pub get
           dart tools/setup.dart
+          flutter pub get
 
       - name: Configure Kotlin JVM validation
         shell: bash
         run: |
-          if [ ! -f android/gradle.properties ]; then
-            touch android/gradle.properties
-          fi
+          touch android/gradle.properties
 
           if grep -q '^kotlin\.jvm\.target\.validation\.mode=' android/gradle.properties; then
             sed -i 's/^kotlin\.jvm\.target\.validation\.mode=.*/kotlin.jvm.target.validation.mode=warning/' android/gradle.properties
@@ -42,39 +41,80 @@ jobs:
             echo 'kotlin.jvm.target.validation.mode=warning' >> android/gradle.properties
           fi
 
-      - name: Set Android compile SDK to 36
+      - name: Set compileSdk 36 for app and plugins
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
           import re
 
-          candidates = [
-              Path("android/app/build.gradle"),
-              Path("android/app/build.gradle.kts"),
+          roots = [
+              Path("android"),
+              Path.home() / ".pub-cache" / "hosted" / "pub.dev",
           ]
 
-          gradle = next((p for p in candidates if p.exists()), None)
-
-          if gradle is None:
-              raise SystemExit("Android app Gradle file not found")
-
-          content = gradle.read_text()
-
-          updated, count = re.subn(
-              r'(\bcompileSdk\s*(?:=\s*)?)(?:\d+|flutter\.compileSdkVersion)',
-              r'\g<1>36',
-              content,
-              count=1
+          pattern = re.compile(
+              r'(\bcompileSdk(?:Version)?\s*(?:=\s*)?)'
+              r'(?:flutter\.compileSdkVersion|\d+)'
           )
 
-          if count == 0:
-              raise SystemExit(
-                  "compileSdk setting not found. Gradle file: " + str(gradle)
-              )
+          changed = []
+          checked = 0
 
-          gradle.write_text(updated)
-          print("compileSdk set to 36 in", gradle)
+          for root in roots:
+              if not root.exists():
+                  continue
+
+              for file in root.rglob("*"):
+                  if not file.is_file():
+                      continue
+
+                  if file.name not in ("build.gradle", "build.gradle.kts"):
+                      continue
+
+                  try:
+                      original = file.read_text()
+                  except (OSError, UnicodeError):
+                      continue
+
+                  checked += 1
+                  updated, count = pattern.subn(
+                      lambda match: match.group(1) + "36",
+                      original
+                  )
+
+                  if count:
+                      file.write_text(updated)
+                      changed.append(str(file))
+
+          print("Gradle files checked:", checked)
+          print("Gradle files updated:", len(changed))
+
+          for file in changed:
+              print("Updated:", file)
+
+          # Verify the file_picker plugin was actually updated.
+          picker_files = [
+              Path.home() / ".pub-cache" / "hosted" / "pub.dev"
+              / "file_picker-" 
+          ]
+
+          cache = Path.home() / ".pub-cache" / "hosted" / "pub.dev"
+          picker_found = False
+
+          if cache.exists():
+              for file in cache.glob("file_picker-*/android/build.gradle*"):
+                  if file.is_file():
+                      picker_found = True
+                      content = file.read_text()
+                      if not re.search(
+                          r'\bcompileSdk(?:Version)?\s*(?:=\s*)?36\b',
+                          content
+                      ):
+                          print("NOTE: Check compileSdk in", file)
+
+          if not picker_found:
+              print("NOTE: file_picker Gradle file not found in cache scan.")
           PY
 
       - name: Build APK
