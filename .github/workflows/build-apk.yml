@@ -42,7 +42,40 @@ jobs:
             echo 'kotlin.jvm.target.validation.mode=warning' >> android/gradle.properties
           fi
 
-          cat android/gradle.properties
+      - name: Set Android compile SDK to 36
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          candidates = [
+              Path("android/app/build.gradle"),
+              Path("android/app/build.gradle.kts"),
+          ]
+
+          gradle = next((p for p in candidates if p.exists()), None)
+
+          if gradle is None:
+              raise SystemExit("Android app Gradle file not found")
+
+          content = gradle.read_text()
+
+          updated, count = re.subn(
+              r'(\bcompileSdk\s*(?:=\s*)?)(?:\d+|flutter\.compileSdkVersion)',
+              r'\g<1>36',
+              content,
+              count=1
+          )
+
+          if count == 0:
+              raise SystemExit(
+                  "compileSdk setting not found. Gradle file: " + str(gradle)
+              )
+
+          gradle.write_text(updated)
+          print("compileSdk set to 36 in", gradle)
+          PY
 
       - name: Build APK
         run: flutter build apk --release
